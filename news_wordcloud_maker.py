@@ -8,8 +8,15 @@ from collections import Counter
 import pickle
 
 
-
-
+# Get keywords of info
+def get_keywords_eng(text):
+    doc = nlp_eng(text)
+    result = []
+    pos_tag = ['VERB', 'NOUN', 'PROPN']
+    for token in doc:
+        if token.pos_ in pos_tag:
+            result.append(token.text)
+    return result
 
 # Load spacy and prepare newsapi
 nlp_eng = spacy.load('en_core_web_lg')
@@ -19,12 +26,9 @@ with open('API_KEY','r') as file:
 newsapi = NewsApiClient (api_key=api_key)
 
 # Retrieve articles in the past x days
-today = date.today()
-delta = timedelta(5)
-articles = []
-for i in range(1, 6):
-    articles.extend(newsapi.get_everything(q='coronavirus', language='en', from_param=str(today - delta), to=str(today), sort_by='relevancy', page=i)['articles'])
-
+end_date = date.today()
+start_date = end_date - timedelta(25)
+articles = newsapi.get_everything(q='coronavirus', language='en', from_param=str(start_date), to=str(end_date), sort_by='relevancy', page_size=100)['articles']
 
 # Store data locally
 filename = 'articlesCOVID.pckl'
@@ -41,41 +45,28 @@ pickle.dump(loaded_model, open(filepath, 'wb'))
 cleaned_articles = []
 for article in articles:
     cleaned_articles.append({'title': article['title'], 'date': article['publishedAt'], 'desc': article['description'], 'content': article['content']})
-# print(cleaned_articles)
 
+# Transform data into data frame
 df = pd.DataFrame(cleaned_articles)
 df = df.dropna()
-df.head()
 
-def get_keywords_eng(text):
-    doc = nlp_eng(text)
-    result = []
-    pos_tag = ['VERB', 'NOUN', 'PROPN']
-    for token in doc:
-        if (token.pos_ in pos_tag):
-            result.append(token.text)
-    return result
-
-results = []
+# Get 5 most common words per article
+top_words_per_article = []
 for content in df.content.values:
-    results.append([('#' + x[0]) for x in Counter(get_keywords_eng(content)).most_common(5)])
+    top_words_per_article.append([('#' + x[0]) for x in Counter(get_keywords_eng(content)).most_common(5)])
 
-df['keywords'] = results
+# Add common words to new column in data frame
+df['keywords'] = top_words_per_article
+df.to_excel('Data.xlsx')
 
-df.head()
-
-
-
-# Get most common 100 words across all articles, not 5 per article
-results = []
+# Get most common words across all articles, not just 5 per article
+all_keywords = []
 for content in df.content.values:
-    results.extend([word.lower() for word in get_keywords_eng(content)])
-temps = str([word for word, count in Counter(results).most_common(100)])
-
+    all_keywords.extend([word.lower() for word in get_keywords_eng(content)])
+keywords_ranked = str([word for word, count in Counter(all_keywords).most_common()])
 
 # Create word cloud
-text = str(results)
-wordcloud = WordCloud(max_font_size=50, max_words=100, background_color="white").generate(text)
+wordcloud = WordCloud(max_font_size=50, max_words=100, background_color="white").generate(keywords_ranked)
 plt.figure()
 plt.imshow(wordcloud, interpolation="bilinear")
 plt.axis("off")
